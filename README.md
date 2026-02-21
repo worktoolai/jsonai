@@ -4,7 +4,7 @@
 
 AI agents waste context reading raw JSON. A 500-line config file burns thousands of tokens when the agent only needs one field. `cat` dumps everything. `jq` requires syntax agents frequently get wrong.
 
-jsonai solves this. Every output is **compact by default** — no whitespace, no noise. Full-text search returns only the matching objects, not the entire file. Overflow protection stops agents from drowning in results. Byte budgets keep output within token limits. And when agents need to modify JSON, pointer-based commands (`set`, `add`, `delete`, `patch`) work without line numbers that go stale.
+jsonai solves this. Every output is **compact by default** — no whitespace, no noise. Full-text search returns only the matching objects, not the entire file. Overflow protection stops agents from drowning in results. Byte budgets keep output within token limits. Built-in `query` runs jq filters natively — no jq install needed, no shell escaping issues. And when agents need to modify JSON, pointer-based commands (`set`, `add`, `delete`, `patch`) work without line numbers that go stale.
 
 **Read, search, and modify JSON — all optimized for minimal token cost.**
 
@@ -13,10 +13,11 @@ jsonai cat config.json                          # compact JSON, not pretty-print
 jsonai cat -p /database config.json             # extract just what you need
 jsonai search -q "error" --all logs.json        # only matching objects, not the whole file
 jsonai search -q "user" --all --max-bytes 4096 data.json  # hard cap on output size
+jsonai query -f '.[] | select(.status == "open")' data.json  # jq filters, no jq needed
 jsonai set -p /settings/theme '"dark"' app.json # modify without reading the whole file
 ```
 
-Built on [Tantivy](https://github.com/quickwit-oss/tantivy) for real full-text search (tokenized, fuzzy, regex) — in-memory, no server required.
+In-memory full-text search and jq filters — no server, no jq install required.
 
 ## Install
 
@@ -131,6 +132,24 @@ jsonai search -q "error" --all --plan ./logs/
 # Bypass overflow, get all results
 jsonai search -q "error" --all --no-overflow ./logs/
 ```
+
+### `query`
+
+Run a jq filter on JSON input. No jq installation required.
+
+```bash
+jsonai query -f '.[] | select(.status == "open")' issues.json
+jsonai query -f 'map(.name)' users.json
+jsonai query -f 'group_by(.type) | map({key: .[0].type, count: length})' data.json
+jsonai query -f 'keys' config.json
+curl ... | jsonai query -f '[.items[] | {id, title}]' -
+```
+
+| Flag | Short | Description |
+|---|---|---|
+| `--filter` | `-f` | jq filter expression | required |
+
+Single results output as a value; multiple results output as an array. Supports `--pretty` / `--compact` global flags.
 
 ### `fields`
 

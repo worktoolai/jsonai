@@ -31,6 +31,8 @@ pub enum Commands {
     Delete(DeleteArgs),
     /// Apply a JSON Patch (RFC 6902) document
     Patch(PatchArgs),
+    /// Run a jq filter on JSON input
+    Query(QueryArgs),
 }
 
 #[derive(Parser)]
@@ -191,6 +193,17 @@ pub struct PatchArgs {
 
     #[arg(long)]
     pub dry_run: bool,
+}
+
+#[derive(Parser)]
+pub struct QueryArgs {
+    /// jq filter expression (e.g., '.[] | select(.status == "open")')
+    #[arg(short, long)]
+    pub filter: String,
+
+    /// Input: file path or "-" for stdin
+    #[arg(required = true)]
+    pub input: String,
 }
 
 #[derive(Clone, ValueEnum)]

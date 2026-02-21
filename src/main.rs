@@ -2,6 +2,7 @@ mod cli;
 mod engine;
 mod manipulate;
 mod output;
+mod query;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -97,6 +98,13 @@ fn main() {
             args.dry_run,
             file_pretty,
         ) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
+        Commands::Query(args) => match query::run_query(&args.filter, &args.input, stdout_pretty) {
             Ok(_) => 0,
             Err(e) => {
                 eprintln!("Error: {:#}", e);
