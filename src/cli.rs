@@ -13,6 +13,14 @@ pub enum Commands {
     Search(SearchArgs),
     /// List searchable fields from a JSON file or schema
     Fields(FieldsArgs),
+    /// Set/update a field value at a JSON Pointer path
+    Set(SetArgs),
+    /// Add a value at a JSON Pointer path (append to arrays)
+    Add(AddArgs),
+    /// Delete a value at a JSON Pointer path
+    Delete(DeleteArgs),
+    /// Apply a JSON Patch (RFC 6902) document
+    Patch(PatchArgs),
 }
 
 #[derive(Parser)]
@@ -90,6 +98,78 @@ pub struct FieldsArgs {
     /// Use this file as JSON Schema
     #[arg(long)]
     pub schema: bool,
+}
+
+#[derive(Parser)]
+pub struct SetArgs {
+    /// JSON Pointer path (e.g., /users/0/name)
+    #[arg(short, long)]
+    pub pointer: String,
+
+    /// Value to set (JSON string, number, object, etc.)
+    pub value: String,
+
+    /// Target JSON file
+    pub file: String,
+
+    /// Write to a different file instead of in-place
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    /// Dry run: print result without writing
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Parser)]
+pub struct AddArgs {
+    /// JSON Pointer path (for arrays: /arr/- appends, /arr/0 inserts at index)
+    #[arg(short, long)]
+    pub pointer: String,
+
+    /// Value to add (JSON)
+    pub value: String,
+
+    /// Target JSON file
+    pub file: String,
+
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Parser)]
+pub struct DeleteArgs {
+    /// JSON Pointer path to delete
+    #[arg(short, long)]
+    pub pointer: String,
+
+    /// Target JSON file
+    pub file: String,
+
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Parser)]
+pub struct PatchArgs {
+    /// JSON Patch document (RFC 6902), or "-" for stdin
+    #[arg(short, long)]
+    pub patch: Option<String>,
+
+    /// Target JSON file
+    pub file: String,
+
+    #[arg(short, long)]
+    pub output: Option<String>,
+
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Clone, ValueEnum)]

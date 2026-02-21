@@ -1,5 +1,6 @@
 mod cli;
 mod engine;
+mod manipulate;
 mod output;
 
 use anyhow::{bail, Context, Result};
@@ -30,6 +31,56 @@ fn main() {
             }
         },
         Commands::Fields(args) => match run_fields(args) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
+        Commands::Set(args) => match manipulate::json_set(
+            &args.file,
+            &args.pointer,
+            &args.value,
+            args.output.as_deref(),
+            args.dry_run,
+        ) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
+        Commands::Add(args) => match manipulate::json_add(
+            &args.file,
+            &args.pointer,
+            &args.value,
+            args.output.as_deref(),
+            args.dry_run,
+        ) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
+        Commands::Delete(args) => match manipulate::json_delete(
+            &args.file,
+            &args.pointer,
+            args.output.as_deref(),
+            args.dry_run,
+        ) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
+        Commands::Patch(args) => match manipulate::json_patch(
+            &args.file,
+            args.patch.as_deref(),
+            args.output.as_deref(),
+            args.dry_run,
+        ) {
             Ok(_) => 0,
             Err(e) => {
                 eprintln!("Error: {:#}", e);

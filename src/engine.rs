@@ -244,17 +244,14 @@ fn extract_recursive(value: &Value, pointer: &str, file: &str, records: &mut Vec
     match value {
         Value::Object(map) => {
             records.push(Record {
-                pointer: if pointer.is_empty() {
-                    "/".to_string()
-                } else {
-                    pointer.to_string()
-                },
+                pointer: pointer.to_string(),
                 file: file.to_string(),
                 value: value.clone(),
             });
 
             for (key, val) in map {
-                let child_pointer = format!("{}/{}", pointer, key);
+                let escaped_key = key.replace('~', "~0").replace('/', "~1");
+                let child_pointer = format!("{}/{}", pointer, escaped_key);
                 extract_recursive(val, &child_pointer, file, records);
             }
         }
