@@ -61,6 +61,18 @@ pub struct SearchArgs {
     #[arg(long)]
     pub max_bytes: Option<usize>,
 
+    /// Overflow threshold: if results exceed this, return plan instead of results
+    #[arg(long, default_value_t = 50)]
+    pub threshold: usize,
+
+    /// Force plan mode: return only metadata/facets/suggestions, no results
+    #[arg(long)]
+    pub plan: bool,
+
+    /// Bypass overflow protection: always return results even if over threshold
+    #[arg(long)]
+    pub no_overflow: bool,
+
     /// JSON Schema file for structure awareness
     #[arg(long)]
     pub schema: Option<String>,

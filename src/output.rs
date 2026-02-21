@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashMap};
+
 use serde::Serialize;
 use serde_json::Value;
 
@@ -208,4 +210,142 @@ fn extract_matching_values(value: &Value) -> Vec<Value> {
         _ => values.push(value.clone()),
     }
     values
+}
+
+// ---------------------------------------------------------------------------
+// Overflow plan
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct PlanEnvelope {
+    pub meta: PlanMeta,
+    pub plan: Plan,
+    pub results: Vec<Value>,
+}
+
+#[derive(Serialize)]
+pub struct PlanMeta {
+    pub total: usize,
+    pub returned: usize,
+    pub overflow: bool,
+    pub threshold: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_searched: Option<usize>,
+}
+
+#[derive(Serialize)]
+pub struct Plan {
+    pub fields: Vec<FieldInfo>,
+    pub facets: BTreeMap<String, Vec<(String, usize)>>,
+    pub commands: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct FieldInfo {
+    pub name: String,
+    pub path: String,
+    pub distinct: usize,
+}
+
+/// Analyze matched records and produce a plan with fields, facets, and
+/// suggested commands for narrowing down an overflow result set.
+pub fn build_plan(
+    results: &[SearchResult],
+    query: &str,
+    input: &str,
+) -> Plan {
+    // field_name -> (distinct values set, value -> count)
+    let mut field_stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
+
+    for sr in results {
+        if let Value::Object(map) = &sr.record.value {
+            for (key, val) in map {
+                let entry = field_stats.entry(key.clone()).or_default();
+                let stringified = value_to_facet_string(val);
+                *entry.entry(stringified).or_insert(0) += 1;
+            }
+        }
+    }
+
+    // Build fields list sorted by distinct count ascending (most useful for
+    // filtering first, i.e. lowest cardinality).
+    let mut fields: Vec<FieldInfo> = field_stats
+        .iter()
+        .map(|(name, value_counts)| FieldInfo {
+            name: name.clone(),
+            path: format!("/{}", name),
+            distinct: value_counts.len(),
+        })
+        .collect();
+    fields.sort_by_key(|f| f.distinct);
+
+    // Build facets: only include fields with distinct count <= 20 (low
+    // cardinality). Show top 5 values sorted by count descending.
+    let mut facets: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();
+    for (name, value_counts) in &field_stats {
+        if value_counts.len() <= 20 {
+            let mut pairs: Vec<(String, usize)> = value_counts
+                .iter()
+                .map(|(v, &c)| (v.clone(), c))
+                .collect();
+            pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            pairs.truncate(5);
+            facets.insert(name.clone(), pairs);
+        }
+    }
+
+    // Generate command suggestions for each facet field.
+    let commands: Vec<String> = facets
+        .keys()
+        .map(|field_name| {
+            format!(
+                "jsonai search -q {:?} --field {} {}",
+                query, field_name, input
+            )
+        })
+        .collect();
+
+    Plan {
+        fields,
+        facets,
+        commands,
+    }
+}
+
+/// Format the full plan envelope as pretty-printed JSON.
+pub fn format_plan_output(
+    results: &[SearchResult],
+    total_matched: usize,
+    threshold: usize,
+    files_searched: Option<usize>,
+    query: &str,
+    input: &str,
+) -> String {
+    let plan = build_plan(results, query, input);
+
+    let envelope = PlanEnvelope {
+        meta: PlanMeta {
+            total: total_matched,
+            returned: 0,
+            overflow: true,
+            threshold,
+            files_searched,
+        },
+        plan,
+        results: vec![],
+    };
+
+    serde_json::to_string_pretty(&envelope).unwrap_or_default()
+}
+
+/// Convert a serde_json::Value to a string suitable for facet counting.
+fn value_to_facet_string(val: &Value) -> String {
+    match val {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        // For arrays/objects, use compact JSON so distinct counting still works.
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
 }

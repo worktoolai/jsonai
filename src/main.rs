@@ -10,7 +10,7 @@ use std::path::Path;
 
 use cli::{Cli, Commands, SearchArgs};
 use engine::{dedup_results, extract_records, Engine, Record};
-use output::format_output;
+use output::{format_output, format_plan_output};
 
 fn main() {
     let cli = Cli::parse();
@@ -57,17 +57,39 @@ fn run_search(args: SearchArgs) -> Result<bool> {
         vec![]
     };
 
+    // When plan mode is possible, fetch more results so facets are accurate
+    let search_limit = if args.plan || !args.no_overflow {
+        std::cmp::max(args.limit + args.offset, args.threshold * 2)
+    } else {
+        args.limit + args.offset
+    };
+
     let mut results = engine.search(
         &args.query,
         &fields,
         &args.r#match,
-        args.limit + args.offset,
+        search_limit,
         0,
     )?;
 
     dedup_results(&mut results);
 
     let total_matched = results.len();
+
+    // Overflow detection: plan mode forced, or results exceed threshold
+    let overflow = args.plan || (!args.no_overflow && total_matched > args.threshold);
+    if overflow {
+        let output = format_plan_output(
+            &results,
+            total_matched,
+            args.threshold,
+            Some(files_searched),
+            &args.query,
+            &args.input,
+        );
+        println!("{}", output);
+        return Ok(true);
+    }
 
     if args.offset > 0 && args.offset < results.len() {
         results = results.into_iter().skip(args.offset).collect();
