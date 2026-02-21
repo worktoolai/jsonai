@@ -16,10 +16,13 @@ use output::{format_output, format_plan_output};
 fn main() {
     let cli = Cli::parse();
 
-    let pretty = cli.pretty;
+    // stdout (search/fields): compact by default, --pretty to opt-in
+    let stdout_pretty = cli.pretty;
+    // file writes (set/add/delete/patch): pretty by default, --compact to opt-out
+    let file_pretty = !cli.compact;
 
     let exit_code = match cli.command {
-        Commands::Search(args) => match run_search(args, pretty) {
+        Commands::Search(args) => match run_search(args, stdout_pretty) {
             Ok(has_matches) => {
                 if has_matches {
                     0
@@ -32,7 +35,7 @@ fn main() {
                 2
             }
         },
-        Commands::Fields(args) => match run_fields(args, pretty) {
+        Commands::Fields(args) => match run_fields(args, stdout_pretty) {
             Ok(_) => 0,
             Err(e) => {
                 eprintln!("Error: {:#}", e);
@@ -45,7 +48,7 @@ fn main() {
             &args.value,
             args.output.as_deref(),
             args.dry_run,
-            pretty,
+            file_pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -59,7 +62,7 @@ fn main() {
             &args.value,
             args.output.as_deref(),
             args.dry_run,
-            pretty,
+            file_pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -72,7 +75,7 @@ fn main() {
             &args.pointer,
             args.output.as_deref(),
             args.dry_run,
-            pretty,
+            file_pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -85,7 +88,7 @@ fn main() {
             args.patch.as_deref(),
             args.output.as_deref(),
             args.dry_run,
-            pretty,
+            file_pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
