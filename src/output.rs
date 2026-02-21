@@ -23,7 +23,7 @@ pub struct Meta {
     pub files_searched: Option<usize>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Hit {
     pub file: String,
     pub pointer: String,
@@ -40,6 +40,7 @@ pub fn format_output(
     count_only: bool,
     select_fields: &Option<Vec<String>>,
     files_searched: Option<usize>,
+    max_bytes: Option<usize>,
 ) -> String {
     if count_only {
         if bare {
@@ -61,10 +62,13 @@ pub fn format_output(
 
     match output_mode {
         OutputMode::Match => {
-            let objects: Vec<Value> = results
+            let all_objects: Vec<Value> = results
                 .iter()
                 .map(|r| project_fields(&r.record.value, select_fields))
                 .collect();
+
+            let (objects, byte_truncated) = truncate_to_budget(&all_objects, max_bytes);
+            let truncated = total_matched > limit || byte_truncated;
 
             if bare {
                 serde_json::to_string_pretty(&objects).unwrap_or_default()
@@ -74,7 +78,7 @@ pub fn format_output(
                         total: total_matched,
                         returned: objects.len(),
                         limit,
-                        truncated: total_matched > limit,
+                        truncated,
                         files_searched,
                     },
                     results: Some(objects),
@@ -84,7 +88,7 @@ pub fn format_output(
             }
         }
         OutputMode::Hit => {
-            let hits: Vec<Hit> = results
+            let all_hits: Vec<Hit> = results
                 .iter()
                 .map(|r| Hit {
                     file: r.record.file.clone(),
@@ -94,6 +98,9 @@ pub fn format_output(
                 })
                 .collect();
 
+            let (hits, byte_truncated) = truncate_to_budget(&all_hits, max_bytes);
+            let truncated = total_matched > limit || byte_truncated;
+
             if bare {
                 serde_json::to_string_pretty(&hits).unwrap_or_default()
             } else {
@@ -102,7 +109,7 @@ pub fn format_output(
                         total: total_matched,
                         returned: hits.len(),
                         limit,
-                        truncated: total_matched > limit,
+                        truncated,
                         files_searched,
                     },
                     results: None,
@@ -112,10 +119,13 @@ pub fn format_output(
             }
         }
         OutputMode::Value => {
-            let values: Vec<Value> = results
+            let all_values: Vec<Value> = results
                 .iter()
                 .flat_map(|r| extract_matching_values(&r.record.value))
                 .collect();
+
+            let (values, byte_truncated) = truncate_to_budget(&all_values, max_bytes);
+            let truncated = total_matched > limit || byte_truncated;
 
             if bare {
                 serde_json::to_string_pretty(&values).unwrap_or_default()
@@ -125,7 +135,7 @@ pub fn format_output(
                         total: total_matched,
                         returned: values.len(),
                         limit,
-                        truncated: total_matched > limit,
+                        truncated,
                         files_searched,
                     },
                     results: Some(values),
@@ -135,6 +145,33 @@ pub fn format_output(
             }
         }
     }
+}
+
+/// Truncate a list of serializable items to fit within a byte budget.
+/// Returns (kept_items, was_truncated).
+/// Reserves ~200 bytes for the envelope/meta overhead.
+fn truncate_to_budget<T: Serialize + Clone>(items: &[T], max_bytes: Option<usize>) -> (Vec<T>, bool) {
+    let budget = match max_bytes {
+        Some(b) => b,
+        None => return (items.to_vec(), false),
+    };
+
+    let overhead = 200; // meta + envelope structure
+    let available = budget.saturating_sub(overhead);
+    let mut kept = Vec::new();
+    let mut used: usize = 0;
+
+    for item in items {
+        let item_json = serde_json::to_string_pretty(item).unwrap_or_default();
+        let item_bytes = item_json.len() + 2; // comma + newline
+        if used + item_bytes > available && !kept.is_empty() {
+            return (kept, true);
+        }
+        used += item_bytes;
+        kept.push(item.clone());
+    }
+
+    (kept, false)
 }
 
 fn project_fields(value: &Value, select_fields: &Option<Vec<String>>) -> Value {

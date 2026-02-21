@@ -91,6 +91,7 @@ fn run_search(args: SearchArgs) -> Result<bool> {
         args.count_only,
         &select_fields,
         Some(files_searched),
+        args.max_bytes,
     );
 
     println!("{}", output);

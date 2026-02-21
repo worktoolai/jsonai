@@ -57,6 +57,10 @@ pub struct SearchArgs {
     #[arg(long)]
     pub bare: bool,
 
+    /// Max output bytes (results truncated to fit, JSON stays valid)
+    #[arg(long)]
+    pub max_bytes: Option<usize>,
+
     /// JSON Schema file for structure awareness
     #[arg(long)]
     pub schema: Option<String>,
