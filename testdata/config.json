@@ -1,0 +1,17 @@
+{
+  "app": {
+    "name": "MyService",
+    "version": "2.1.0",
+    "author": "John Doe"
+  },
+  "database": {
+    "host": "db.example.com",
+    "port": 5432,
+    "name": "production"
+  },
+  "features": {
+    "darkMode": true,
+    "notifications": false,
+    "maxRetries": 3
+  }
+}

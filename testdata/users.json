@@ -1,0 +1,7 @@
+[
+  {"id": 1, "name": "John Doe", "email": "john@example.com", "role": "admin", "tags": ["backend", "devops"]},
+  {"id": 2, "name": "Jane Smith", "email": "jane@example.com", "role": "developer", "tags": ["frontend", "react"]},
+  {"id": 3, "name": "Bob Johnson", "email": "bob@company.org", "role": "developer", "tags": ["backend", "rust"]},
+  {"id": 4, "name": "Alice Kim", "email": "alice@example.com", "role": "designer", "tags": ["ui", "figma"]},
+  {"id": 5, "name": "Charlie Park", "email": "charlie@company.org", "role": "admin", "tags": ["infra", "k8s"]}
+]
