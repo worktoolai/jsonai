@@ -16,8 +16,10 @@ use output::{format_output, format_plan_output};
 fn main() {
     let cli = Cli::parse();
 
+    let pretty = cli.pretty;
+
     let exit_code = match cli.command {
-        Commands::Search(args) => match run_search(args) {
+        Commands::Search(args) => match run_search(args, pretty) {
             Ok(has_matches) => {
                 if has_matches {
                     0
@@ -30,7 +32,7 @@ fn main() {
                 2
             }
         },
-        Commands::Fields(args) => match run_fields(args) {
+        Commands::Fields(args) => match run_fields(args, pretty) {
             Ok(_) => 0,
             Err(e) => {
                 eprintln!("Error: {:#}", e);
@@ -43,6 +45,7 @@ fn main() {
             &args.value,
             args.output.as_deref(),
             args.dry_run,
+            pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -56,6 +59,7 @@ fn main() {
             &args.value,
             args.output.as_deref(),
             args.dry_run,
+            pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -68,6 +72,7 @@ fn main() {
             &args.pointer,
             args.output.as_deref(),
             args.dry_run,
+            pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -80,6 +85,7 @@ fn main() {
             args.patch.as_deref(),
             args.output.as_deref(),
             args.dry_run,
+            pretty,
         ) {
             Ok(_) => 0,
             Err(e) => {
@@ -92,7 +98,7 @@ fn main() {
     std::process::exit(exit_code);
 }
 
-fn run_search(args: SearchArgs) -> Result<bool> {
+fn run_search(args: SearchArgs, pretty: bool) -> Result<bool> {
     let (records, files_searched) = load_records(&args.input)?;
 
     if records.is_empty() {
@@ -137,6 +143,7 @@ fn run_search(args: SearchArgs) -> Result<bool> {
             Some(files_searched),
             &args.query,
             &args.input,
+            pretty,
         );
         println!("{}", output);
         return Ok(true);
@@ -165,6 +172,7 @@ fn run_search(args: SearchArgs) -> Result<bool> {
         &select_fields,
         Some(files_searched),
         args.max_bytes,
+        pretty,
     );
 
     println!("{}", output);
@@ -235,7 +243,7 @@ fn load_glob(pattern: &str) -> Result<(Vec<Record>, usize)> {
     Ok((all_records, file_count))
 }
 
-fn run_fields(args: cli::FieldsArgs) -> Result<()> {
+fn run_fields(args: cli::FieldsArgs, pretty: bool) -> Result<()> {
     let content = std::fs::read_to_string(&args.input)
         .with_context(|| format!("Failed to read {}", args.input))?;
     let value: Value = serde_json::from_str(&content)
@@ -246,7 +254,7 @@ fn run_fields(args: cli::FieldsArgs) -> Result<()> {
     fields.sort();
     fields.dedup();
 
-    let output = serde_json::to_string_pretty(&fields)?;
+    let output = output::to_json(&fields, pretty);
     println!("{}", output);
 
     Ok(())

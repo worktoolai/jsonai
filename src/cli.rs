@@ -3,6 +3,10 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[derive(Parser)]
 #[command(name = "jsonai", about = "Agent-first JSON full-text search CLI")]
 pub struct Cli {
+    /// Pretty-print JSON output (default: compact for agent context savings)
+    #[arg(long, global = true)]
+    pub pretty: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }

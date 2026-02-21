@@ -6,6 +6,14 @@ use serde_json::Value;
 use crate::cli::OutputMode;
 use crate::engine::SearchResult;
 
+pub fn to_json<T: Serialize>(value: &T, pretty: bool) -> String {
+    if pretty {
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    } else {
+        serde_json::to_string(value).unwrap_or_default()
+    }
+}
+
 #[derive(Serialize)]
 pub struct Envelope {
     pub meta: Meta,
@@ -43,6 +51,7 @@ pub fn format_output(
     select_fields: &Option<Vec<String>>,
     files_searched: Option<usize>,
     max_bytes: Option<usize>,
+    pretty: bool,
 ) -> String {
     if count_only {
         if bare {
@@ -59,7 +68,7 @@ pub fn format_output(
             results: None,
             hits: None,
         };
-        return serde_json::to_string_pretty(&envelope).unwrap_or_default();
+        return to_json(&envelope, pretty);
     }
 
     match output_mode {
@@ -73,7 +82,7 @@ pub fn format_output(
             let truncated = total_matched > limit || byte_truncated;
 
             if bare {
-                serde_json::to_string_pretty(&objects).unwrap_or_default()
+                to_json(&objects, pretty)
             } else {
                 let envelope = Envelope {
                     meta: Meta {
@@ -86,7 +95,7 @@ pub fn format_output(
                     results: Some(objects),
                     hits: None,
                 };
-                serde_json::to_string_pretty(&envelope).unwrap_or_default()
+                to_json(&envelope, pretty)
             }
         }
         OutputMode::Hit => {
@@ -104,7 +113,7 @@ pub fn format_output(
             let truncated = total_matched > limit || byte_truncated;
 
             if bare {
-                serde_json::to_string_pretty(&hits).unwrap_or_default()
+                to_json(&hits, pretty)
             } else {
                 let envelope = Envelope {
                     meta: Meta {
@@ -117,7 +126,7 @@ pub fn format_output(
                     results: None,
                     hits: Some(hits),
                 };
-                serde_json::to_string_pretty(&envelope).unwrap_or_default()
+                to_json(&envelope, pretty)
             }
         }
         OutputMode::Value => {
@@ -130,7 +139,7 @@ pub fn format_output(
             let truncated = total_matched > limit || byte_truncated;
 
             if bare {
-                serde_json::to_string_pretty(&values).unwrap_or_default()
+                to_json(&values, pretty)
             } else {
                 let envelope = Envelope {
                     meta: Meta {
@@ -143,7 +152,7 @@ pub fn format_output(
                     results: Some(values),
                     hits: None,
                 };
-                serde_json::to_string_pretty(&envelope).unwrap_or_default()
+                to_json(&envelope, pretty)
             }
         }
     }
@@ -164,7 +173,7 @@ fn truncate_to_budget<T: Serialize + Clone>(items: &[T], max_bytes: Option<usize
     let mut used: usize = 0;
 
     for item in items {
-        let item_json = serde_json::to_string_pretty(item).unwrap_or_default();
+        let item_json = serde_json::to_string(item).unwrap_or_default();
         let item_bytes = item_json.len() + 2; // comma + newline
         if used + item_bytes > available && !kept.is_empty() {
             return (kept, true);
@@ -320,6 +329,7 @@ pub fn format_plan_output(
     files_searched: Option<usize>,
     query: &str,
     input: &str,
+    pretty: bool,
 ) -> String {
     let plan = build_plan(results, query, input);
 
@@ -335,7 +345,7 @@ pub fn format_plan_output(
         results: vec![],
     };
 
-    serde_json::to_string_pretty(&envelope).unwrap_or_default()
+    to_json(&envelope, pretty)
 }
 
 /// Convert a serde_json::Value to a string suitable for facet counting.

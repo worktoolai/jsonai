@@ -110,17 +110,20 @@ fn read_json_file(file: &str) -> Result<Value> {
 /// - dry_run: print to stdout
 /// - output is Some: write to that path
 /// - otherwise: overwrite the original file
-fn write_json(value: &Value, file: &str, output: Option<&str>, dry_run: bool) -> Result<()> {
-    let pretty =
-        serde_json::to_string_pretty(value).context("Failed to serialize JSON output")?;
+fn write_json(value: &Value, file: &str, output: Option<&str>, dry_run: bool, pretty: bool) -> Result<()> {
+    let serialized = if pretty {
+        serde_json::to_string_pretty(value).context("Failed to serialize JSON output")?
+    } else {
+        serde_json::to_string(value).context("Failed to serialize JSON output")?
+    };
 
     if dry_run {
-        println!("{}", pretty);
+        println!("{}", serialized);
         return Ok(());
     }
 
     let dest = output.unwrap_or(file);
-    std::fs::write(dest, format!("{}\n", pretty))
+    std::fs::write(dest, format!("{}\n", serialized))
         .with_context(|| format!("Failed to write {}", dest))?;
     Ok(())
 }
@@ -138,6 +141,7 @@ pub fn json_set(
     value_str: &str,
     output: Option<&str>,
     dry_run: bool,
+    pretty: bool,
 ) -> Result<()> {
     let mut root = read_json_file(file)?;
     let new_value: Value = serde_json::from_str(value_str)
@@ -176,7 +180,7 @@ pub fn json_set(
         }
     }
 
-    write_json(&root, file, output, dry_run)
+    write_json(&root, file, output, dry_run, pretty)
 }
 
 /// Add a value at `pointer`.
@@ -192,6 +196,7 @@ pub fn json_add(
     value_str: &str,
     output: Option<&str>,
     dry_run: bool,
+    pretty: bool,
 ) -> Result<()> {
     let mut root = read_json_file(file)?;
     let new_value: Value = serde_json::from_str(value_str)
@@ -229,7 +234,7 @@ pub fn json_add(
         }
     }
 
-    write_json(&root, file, output, dry_run)
+    write_json(&root, file, output, dry_run, pretty)
 }
 
 /// Delete the value at `pointer`.
@@ -238,6 +243,7 @@ pub fn json_delete(
     pointer: &str,
     output: Option<&str>,
     dry_run: bool,
+    pretty: bool,
 ) -> Result<()> {
     if pointer.is_empty() {
         bail!("Cannot delete the root document");
@@ -268,7 +274,7 @@ pub fn json_delete(
         _ => bail!("Parent at pointer is not an object or array"),
     }
 
-    write_json(&root, file, output, dry_run)
+    write_json(&root, file, output, dry_run, pretty)
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +290,7 @@ pub fn json_patch(
     patch_source: Option<&str>,
     output: Option<&str>,
     dry_run: bool,
+    pretty: bool,
 ) -> Result<()> {
     let mut root = read_json_file(file)?;
 
@@ -326,7 +333,7 @@ pub fn json_patch(
         apply_patch_op(&mut root, op_val, i, false)?;
     }
 
-    write_json(&root, file, output, dry_run)
+    write_json(&root, file, output, dry_run, pretty)
 }
 
 /// Apply a single RFC 6902 operation.
