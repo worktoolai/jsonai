@@ -17,6 +17,8 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    /// Output JSON file as compact JSON (no search)
+    Cat(CatArgs),
     /// Search JSON files by value
     Search(SearchArgs),
     /// List searchable fields from a JSON file or schema
@@ -29,6 +31,17 @@ pub enum Commands {
     Delete(DeleteArgs),
     /// Apply a JSON Patch (RFC 6902) document
     Patch(PatchArgs),
+}
+
+#[derive(Parser)]
+pub struct CatArgs {
+    /// Input: file path, directory, glob, or "-" for stdin
+    #[arg(required = true)]
+    pub input: String,
+
+    /// JSON Pointer path to extract a subtree (e.g., /users/0)
+    #[arg(short, long)]
+    pub pointer: Option<String>,
 }
 
 #[derive(Parser)]

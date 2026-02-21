@@ -22,6 +22,13 @@ fn main() {
     let file_pretty = !cli.compact;
 
     let exit_code = match cli.command {
+        Commands::Cat(args) => match run_cat(args, stdout_pretty) {
+            Ok(_) => 0,
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                2
+            }
+        },
         Commands::Search(args) => match run_search(args, stdout_pretty) {
             Ok(has_matches) => {
                 if has_matches {
@@ -99,6 +106,37 @@ fn main() {
     };
 
     std::process::exit(exit_code);
+}
+
+fn run_cat(args: cli::CatArgs, pretty: bool) -> Result<()> {
+    let value = load_json_value(&args.input)?;
+
+    let output_value = match &args.pointer {
+        Some(ptr) => {
+            let resolved = value.pointer(ptr)
+                .with_context(|| format!("Pointer {} not found", ptr))?;
+            resolved.clone()
+        }
+        None => value,
+    };
+
+    let output = output::to_json(&output_value, pretty);
+    println!("{}", output);
+    Ok(())
+}
+
+fn load_json_value(input: &str) -> Result<Value> {
+    if input == "-" {
+        let mut buf = String::new();
+        io::stdin()
+            .read_to_string(&mut buf)
+            .context("Failed to read stdin")?;
+        serde_json::from_str(&buf).context("Invalid JSON from stdin")
+    } else {
+        let content =
+            std::fs::read_to_string(input).with_context(|| format!("Failed to read {}", input))?;
+        serde_json::from_str(&content).with_context(|| format!("Invalid JSON in {}", input))
+    }
 }
 
 fn run_search(args: SearchArgs, pretty: bool) -> Result<bool> {
