@@ -7,6 +7,9 @@ use std::io::{self, Read};
 
 use crate::output;
 
+const ESCAPED_BANG_HINT: &str = "`\\!` detected. Use `!=` (no backslash) or `== ... | not`.";
+const UNARY_BANG_HINT: &str = "Unary `!` is unsupported. Use `not`.";
+
 pub fn run_query(filter_str: &str, input: &str, pretty: bool) -> Result<()> {
     let value = load_input(input)?;
     let results = eval(filter_str, value)?;
@@ -38,13 +41,31 @@ fn eval(filter_str: &str, input: Value) -> Result<Vec<Value>> {
     let loader = Loader::new(jaq_std::defs().chain(jaq_json::defs()));
     let arena = Arena::default();
 
+    if filter_str.contains("\\!") {
+        bail!("{ESCAPED_BANG_HINT}");
+    }
+
+    let trimmed = filter_str.trim();
+    if trimmed.starts_with('!') {
+        bail!("{UNARY_BANG_HINT}");
+    }
+
     let program = File {
         code: filter_str,
         path: (),
     };
     let modules = loader
         .load(&arena, program)
-        .map_err(|errs| anyhow::anyhow!("Parse error: {:?}", errs))?;
+        .map_err(|errs| {
+            let err_text = format!("{:?}", errs);
+            if err_text.contains("\\\\!") {
+                anyhow::anyhow!("Parse error: {:?}\nHint: {ESCAPED_BANG_HINT}", errs)
+            } else if trimmed.starts_with('!') || err_text.contains("Parse([(Term, \"!\")])") {
+                anyhow::anyhow!("Parse error: {:?}\nHint: {UNARY_BANG_HINT}", errs)
+            } else {
+                anyhow::anyhow!("Parse error: {:?}", errs)
+            }
+        })?;
 
     let filter = Compiler::default()
         .with_funs(jaq_std::funs().chain(jaq_json::funs()))
