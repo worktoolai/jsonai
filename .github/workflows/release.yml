@@ -8,36 +8,28 @@ permissions:
   contents: write
 
 jobs:
-  check:
+  tag:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
-      should_release: ${{ steps.check_tag.outputs.should_release }}
+      tag: ${{ steps.tag.outputs.tag }}
       notes: ${{ steps.notes.outputs.notes }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get version from Cargo.toml
-        id: version
+      - name: Generate date-based tag
+        id: tag
         run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag exists
-        id: check_tag
-        run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-          fi
+          DATE=$(date -u +%Y.%m.%d)
+          BASE="v${DATE}"
+          N=1
+          while git rev-parse "${BASE}.${N}" >/dev/null 2>&1; do
+            N=$((N + 1))
+          done
+          echo "tag=${BASE}.${N}" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
-        if: steps.check_tag.outputs.should_release == 'true'
         id: notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -52,13 +44,12 @@ jobs:
             echo ""
             echo "$COMMITS"
             echo ""
-            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-initial}..v${{ steps.version.outputs.version }}"
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-initial}..${{ steps.tag.outputs.tag }}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
   build:
-    needs: check
-    if: needs.check.outputs.should_release == 'true'
+    needs: tag
     strategy:
       matrix:
         include:
@@ -114,7 +105,7 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release:
-    needs: [check, build]
+    needs: [tag, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -128,13 +119,13 @@ jobs:
 
       - name: Create tag
         run: |
-          git tag "${{ needs.check.outputs.tag }}"
-          git push origin "${{ needs.check.outputs.tag }}"
+          git tag "${{ needs.tag.outputs.tag }}"
+          git push origin "${{ needs.tag.outputs.tag }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.check.outputs.tag }}
-          name: ${{ needs.check.outputs.tag }}
-          body: ${{ needs.check.outputs.notes }}
+          tag_name: ${{ needs.tag.outputs.tag }}
+          name: ${{ needs.tag.outputs.tag }}
+          body: ${{ needs.tag.outputs.notes }}
           files: artifacts/*
