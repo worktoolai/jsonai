@@ -121,7 +121,8 @@ fn run_cat(args: cli::CatArgs, pretty: bool) -> Result<()> {
 
     let output_value = match &args.pointer {
         Some(ptr) => {
-            let resolved = value.pointer(ptr)
+            let resolved = value
+                .pointer(ptr)
                 .with_context(|| format!("Pointer {} not found", ptr))?;
             resolved.clone()
         }
@@ -170,13 +171,7 @@ fn run_search(args: SearchArgs, pretty: bool) -> Result<bool> {
         args.limit + args.offset
     };
 
-    let mut results = engine.search(
-        &args.query,
-        &fields,
-        &args.r#match,
-        search_limit,
-        0,
-    )?;
+    let mut results = engine.search(&args.query, &fields, &args.r#match, search_limit, 0)?;
 
     dedup_results(&mut results);
 
@@ -266,21 +261,26 @@ fn load_directory(dir: &str) -> Result<(Vec<Record>, usize)> {
 }
 
 fn load_glob(pattern: &str) -> Result<(Vec<Record>, usize)> {
+    let matcher = glob::Pattern::new(pattern).context("Invalid glob pattern")?;
+    let search_root = glob_search_root(pattern);
+    let walk_root = glob_walk_root(&search_root);
+
     let mut all_records = Vec::new();
     let mut file_count = 0;
 
-    for entry in glob::glob(pattern).context("Invalid glob pattern")? {
-        let path = entry.context("Failed to read glob entry")?;
-        if path.is_file() {
-            let path_str = path.to_string_lossy().to_string();
-            match load_file(&path_str) {
-                Ok(records) => {
-                    all_records.extend(records);
-                    file_count += 1;
-                }
-                Err(e) => {
-                    eprintln!("Warning: skipping {}: {}", path_str, e);
-                }
+    for path in walk_files_respecting_gitignore(&walk_root)? {
+        if !path_matches_glob(&matcher, &path) {
+            continue;
+        }
+
+        let path_str = path.to_string_lossy().to_string();
+        match load_file(&path_str) {
+            Ok(records) => {
+                all_records.extend(records);
+                file_count += 1;
+            }
+            Err(e) => {
+                eprintln!("Warning: skipping {}: {}", path_str, e);
             }
         }
     }
@@ -290,6 +290,114 @@ fn load_glob(pattern: &str) -> Result<(Vec<Record>, usize)> {
     }
 
     Ok((all_records, file_count))
+}
+
+fn walk_files_respecting_gitignore(root: &Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut files = Vec::new();
+
+    let mut builder = ignore::WalkBuilder::new(root);
+    builder
+        .hidden(false)
+        .ignore(true)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        .require_git(false);
+
+    for entry in builder.build() {
+        let entry = entry.with_context(|| format!("Failed to walk {}", root.display()))?;
+        let path = entry.path();
+
+        if path_has_ignored_runtime_dir(path) {
+            continue;
+        }
+
+        if entry
+            .file_type()
+            .map(|file_type| file_type.is_file())
+            .unwrap_or(false)
+        {
+            files.push(entry.into_path());
+        }
+    }
+
+    Ok(files)
+}
+
+const RUNTIME_IGNORED_DIRS: &[&str] = &[".worktoolai"];
+
+fn path_has_ignored_runtime_dir(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .map(|name| RUNTIME_IGNORED_DIRS.contains(&name))
+            .unwrap_or(false)
+    })
+}
+
+fn glob_search_root(pattern: &str) -> std::path::PathBuf {
+    let wildcard_start = pattern
+        .char_indices()
+        .find(|(_, c)| matches!(c, '*' | '?' | '[' | '{'))
+        .map(|(idx, _)| idx);
+
+    let prefix = wildcard_start.map(|idx| &pattern[..idx]).unwrap_or(pattern);
+    if prefix.is_empty() {
+        return ".".into();
+    }
+
+    let prefix_path = Path::new(prefix);
+    let root = if prefix.ends_with('/') || prefix.ends_with(std::path::MAIN_SEPARATOR) {
+        prefix_path
+    } else {
+        prefix_path.parent().unwrap_or_else(|| Path::new("."))
+    };
+
+    if root.as_os_str().is_empty() {
+        ".".into()
+    } else {
+        root.to_path_buf()
+    }
+}
+
+fn glob_walk_root(search_root: &Path) -> std::path::PathBuf {
+    let mut candidate = search_root;
+
+    while let Some(parent) = candidate.parent() {
+        if parent == candidate {
+            break;
+        }
+        if parent.join(".git").exists() {
+            candidate = parent;
+            continue;
+        }
+        break;
+    }
+
+    candidate.to_path_buf()
+}
+
+fn path_matches_glob(matcher: &glob::Pattern, path: &Path) -> bool {
+    if matcher.matches_path(path) {
+        return true;
+    }
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        if let Ok(relative_path) = path.strip_prefix(&current_dir) {
+            if matcher.matches_path(relative_path) {
+                return true;
+            }
+
+            let dot_relative = Path::new(".").join(relative_path);
+            if matcher.matches_path(&dot_relative) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn run_fields(args: cli::FieldsArgs, pretty: bool) -> Result<()> {
@@ -328,5 +436,96 @@ fn collect_field_paths(value: &Value, prefix: &str, fields: &mut Vec<String>) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_directory, load_glob};
+    use serde_json::json;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    fn write_json(path: &Path, value: serde_json::Value) {
+        fs::write(path, serde_json::to_string(&value).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn load_directory_respects_gitignore() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join(".gitignore"), "target/\n").unwrap();
+
+        fs::create_dir(temp.path().join("target")).unwrap();
+        write_json(&temp.path().join("target/ignored.json"), json!({ "msg": "ignored" }));
+        write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
+
+        let (records, file_count) = load_directory(temp.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(file_count, 1);
+        assert!(records.iter().all(|r| !r.file.ends_with("target/ignored.json")));
+        assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
+    }
+
+    #[test]
+    fn load_glob_respects_gitignore() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join(".gitignore"), "target/\n").unwrap();
+
+        fs::create_dir(temp.path().join("target")).unwrap();
+        write_json(&temp.path().join("target/ignored.json"), json!({ "msg": "ignored" }));
+        write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
+
+        let pattern = format!("{}/**/*.json", temp.path().display());
+        let (records, file_count) = load_glob(&pattern).unwrap();
+
+        assert_eq!(file_count, 1);
+        assert!(records.iter().all(|r| !r.file.ends_with("target/ignored.json")));
+        assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
+    }
+
+    #[test]
+    fn load_directory_ignores_worktoolai_dir() {
+        let temp = tempdir().unwrap();
+
+        fs::create_dir(temp.path().join(".worktoolai")).unwrap();
+        write_json(
+            &temp.path().join(".worktoolai/ignored.json"),
+            json!({ "msg": "ignored" }),
+        );
+        write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
+
+        let (records, file_count) = load_directory(temp.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(file_count, 1);
+        assert!(
+            records
+                .iter()
+                .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai"))
+        );
+        assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
+    }
+
+    #[test]
+    fn load_glob_ignores_worktoolai_dir() {
+        let temp = tempdir().unwrap();
+
+        fs::create_dir(temp.path().join(".worktoolai")).unwrap();
+        write_json(
+            &temp.path().join(".worktoolai/ignored.json"),
+            json!({ "msg": "ignored" }),
+        );
+        write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
+
+        let pattern = format!("{}/**/*.json", temp.path().display());
+        let (records, file_count) = load_glob(&pattern).unwrap();
+
+        assert_eq!(file_count, 1);
+        assert!(
+            records
+                .iter()
+                .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai"))
+        );
+        assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
     }
 }
