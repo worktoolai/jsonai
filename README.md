@@ -21,12 +21,8 @@ In-memory full-text search and jq filters — no server, no jq install required.
 
 ## Install
 
-Download from [GitHub Releases](https://github.com/worktoolai/jsonai/releases) (Linux, macOS, Windows):
-
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/worktoolai/jsonai/releases/latest/download/jsonai-darwin-arm64 -o jsonai
-chmod +x jsonai && mv jsonai /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/worktoolai/jsonai/main/install.sh | sh
 ```
 
 Or build from source:
