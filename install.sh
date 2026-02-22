@@ -3,7 +3,7 @@ set -e
 
 REPO="worktoolai/jsonai"
 NAME="jsonai"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.worktoolai/bin}"
 
 # Detect OS
 OS="$(uname -s)"
@@ -40,12 +40,30 @@ if [ ! -s "$TMP" ]; then
 fi
 
 # Install
+mkdir -p "$INSTALL_DIR"
 chmod +x "$TMP"
-if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP" "${INSTALL_DIR}/${NAME}"
-else
-  echo "Need sudo to install to ${INSTALL_DIR}"
-  sudo mv "$TMP" "${INSTALL_DIR}/${NAME}"
-fi
+mv "$TMP" "${INSTALL_DIR}/${NAME}"
 
 echo "Installed ${NAME} ${TAG} to ${INSTALL_DIR}/${NAME}"
+
+# Add to PATH if not already present
+PATH_LINE='export PATH="$HOME/.worktoolai/bin:$PATH"'
+case ":$PATH:" in
+  *":${INSTALL_DIR}:"*)
+    echo "PATH already configured."
+    ;;
+  *)
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do
+      if [ -f "$rc" ]; then
+        if ! grep -qF '.worktoolai/bin' "$rc"; then
+          echo "" >> "$rc"
+          echo "$PATH_LINE" >> "$rc"
+          echo "Added PATH to ${rc}"
+        fi
+      fi
+    done
+    echo ""
+    echo "Restart your shell or run:"
+    echo "  export PATH=\"\$HOME/.worktoolai/bin:\$PATH\""
+    ;;
+esac
