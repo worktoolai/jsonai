@@ -161,7 +161,10 @@ pub fn format_output(
 /// Truncate a list of serializable items to fit within a byte budget.
 /// Returns (kept_items, was_truncated).
 /// Reserves ~200 bytes for the envelope/meta overhead.
-fn truncate_to_budget<T: Serialize + Clone>(items: &[T], max_bytes: Option<usize>) -> (Vec<T>, bool) {
+fn truncate_to_budget<T: Serialize + Clone>(
+    items: &[T],
+    max_bytes: Option<usize>,
+) -> (Vec<T>, bool) {
     let budget = match max_bytes {
         Some(b) => b,
         None => return (items.to_vec(), false),
@@ -256,13 +259,13 @@ pub struct FieldInfo {
     pub distinct: usize,
 }
 
+fn escape_pointer_segment(seg: &str) -> String {
+    seg.replace('~', "~0").replace('/', "~1")
+}
+
 /// Analyze matched records and produce a plan with fields, facets, and
 /// suggested commands for narrowing down an overflow result set.
-pub fn build_plan(
-    results: &[SearchResult],
-    query: &str,
-    input: &str,
-) -> Plan {
+pub fn build_plan(results: &[SearchResult], query: &str, input: &str) -> Plan {
     // field_name -> (distinct values set, value -> count)
     let mut field_stats: HashMap<String, HashMap<String, usize>> = HashMap::new();
 
@@ -282,7 +285,7 @@ pub fn build_plan(
         .iter()
         .map(|(name, value_counts)| FieldInfo {
             name: name.clone(),
-            path: format!("/{}", name),
+            path: format!("/{}", escape_pointer_segment(name)),
             distinct: value_counts.len(),
         })
         .collect();
@@ -293,10 +296,8 @@ pub fn build_plan(
     let mut facets: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();
     for (name, value_counts) in &field_stats {
         if value_counts.len() <= 20 {
-            let mut pairs: Vec<(String, usize)> = value_counts
-                .iter()
-                .map(|(v, &c)| (v.clone(), c))
-                .collect();
+            let mut pairs: Vec<(String, usize)> =
+                value_counts.iter().map(|(v, &c)| (v.clone(), c)).collect();
             pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
             pairs.truncate(5);
             facets.insert(name.clone(), pairs);
@@ -357,5 +358,32 @@ fn value_to_facet_string(val: &Value) -> String {
         Value::Null => "null".to_string(),
         // For arrays/objects, use compact JSON so distinct counting still works.
         other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_field_path_escapes_pointer_segment() {
+        let results = vec![SearchResult {
+            record: crate::engine::Record {
+                file: "f.json".to_string(),
+                pointer: "".to_string(),
+                value: serde_json::json!({
+                    "src/lib": 1,
+                    "config~backup": 2
+                }),
+            },
+            score: 1.0,
+        }];
+
+        let plan = build_plan(&results, "q", "input.json");
+        let mut paths: Vec<String> = plan.fields.into_iter().map(|f| f.path).collect();
+        paths.sort();
+
+        assert!(paths.contains(&"/src~1lib".to_string()));
+        assert!(paths.contains(&"/config~0backup".to_string()));
     }
 }

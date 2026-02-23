@@ -457,13 +457,18 @@ mod tests {
         fs::write(temp.path().join(".gitignore"), "target/\n").unwrap();
 
         fs::create_dir(temp.path().join("target")).unwrap();
-        write_json(&temp.path().join("target/ignored.json"), json!({ "msg": "ignored" }));
+        write_json(
+            &temp.path().join("target/ignored.json"),
+            json!({ "msg": "ignored" }),
+        );
         write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
 
         let (records, file_count) = load_directory(temp.path().to_str().unwrap()).unwrap();
 
         assert_eq!(file_count, 1);
-        assert!(records.iter().all(|r| !r.file.ends_with("target/ignored.json")));
+        assert!(records
+            .iter()
+            .all(|r| !r.file.ends_with("target/ignored.json")));
         assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
     }
 
@@ -473,14 +478,19 @@ mod tests {
         fs::write(temp.path().join(".gitignore"), "target/\n").unwrap();
 
         fs::create_dir(temp.path().join("target")).unwrap();
-        write_json(&temp.path().join("target/ignored.json"), json!({ "msg": "ignored" }));
+        write_json(
+            &temp.path().join("target/ignored.json"),
+            json!({ "msg": "ignored" }),
+        );
         write_json(&temp.path().join("keep.json"), json!({ "msg": "kept" }));
 
         let pattern = format!("{}/**/*.json", temp.path().display());
         let (records, file_count) = load_glob(&pattern).unwrap();
 
         assert_eq!(file_count, 1);
-        assert!(records.iter().all(|r| !r.file.ends_with("target/ignored.json")));
+        assert!(records
+            .iter()
+            .all(|r| !r.file.ends_with("target/ignored.json")));
         assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
     }
 
@@ -498,11 +508,9 @@ mod tests {
         let (records, file_count) = load_directory(temp.path().to_str().unwrap()).unwrap();
 
         assert_eq!(file_count, 1);
-        assert!(
-            records
-                .iter()
-                .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai"))
-        );
+        assert!(records
+            .iter()
+            .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai")));
         assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
     }
 
@@ -521,11 +529,9 @@ mod tests {
         let (records, file_count) = load_glob(&pattern).unwrap();
 
         assert_eq!(file_count, 1);
-        assert!(
-            records
-                .iter()
-                .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai"))
-        );
+        assert!(records
+            .iter()
+            .all(|r| !r.file.contains("/.worktoolai/") && !r.file.ends_with("/.worktoolai")));
         assert!(records.iter().any(|r| r.file.ends_with("keep.json")));
     }
 }

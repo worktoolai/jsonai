@@ -84,7 +84,10 @@ impl Engine {
                     .collect(),
                 _ => {
                     let mut m = BTreeMap::new();
-                    m.insert("_value".to_string(), schema::OwnedValue::from(record.value.clone()));
+                    m.insert(
+                        "_value".to_string(),
+                        schema::OwnedValue::from(record.value.clone()),
+                    );
                     m
                 }
             };
@@ -162,8 +165,7 @@ impl Engine {
                 };
 
                 Box::new(
-                    RegexQuery::from_pattern(query_str, field)
-                        .context("Failed to parse regex")?,
+                    RegexQuery::from_pattern(query_str, field).context("Failed to parse regex")?,
                 )
             }
         };
@@ -278,8 +280,58 @@ pub fn dedup_results(results: &mut Vec<SearchResult>) {
         !pointers.iter().any(|(other_ptr, other_file)| {
             other_ptr != my_pointer
                 && other_file == my_file
-                && other_ptr.starts_with(my_pointer.as_str())
-                && other_ptr.len() > my_pointer.len()
+                && is_descendant_pointer(other_ptr, my_pointer)
         })
     });
+}
+
+fn is_descendant_pointer(candidate: &str, ancestor: &str) -> bool {
+    if ancestor.is_empty() {
+        return !candidate.is_empty();
+    }
+
+    candidate.starts_with(ancestor) && candidate.as_bytes().get(ancestor.len()) == Some(&b'/')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn descendant_pointer_requires_segment_boundary() {
+        assert!(is_descendant_pointer("/a/b", "/a"));
+        assert!(is_descendant_pointer("/a~1b/c", "/a~1b"));
+
+        assert!(!is_descendant_pointer("/ab", "/a"));
+        assert!(!is_descendant_pointer("/a~1bc", "/a~1b"));
+    }
+
+    #[test]
+    fn dedup_keeps_non_ancestor_pointers() {
+        let mut results = vec![
+            SearchResult {
+                record: Record {
+                    pointer: "/a~1b".to_string(),
+                    file: "file.json".to_string(),
+                    value: json!({"x": 1}),
+                },
+                score: 1.0,
+            },
+            SearchResult {
+                record: Record {
+                    pointer: "/a~1bc".to_string(),
+                    file: "file.json".to_string(),
+                    value: json!({"y": 2}),
+                },
+                score: 1.0,
+            },
+        ];
+
+        dedup_results(&mut results);
+
+        assert_eq!(results.len(), 2);
+        assert!(results.iter().any(|r| r.record.pointer == "/a~1b"));
+        assert!(results.iter().any(|r| r.record.pointer == "/a~1bc"));
+    }
 }

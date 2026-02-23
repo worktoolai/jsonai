@@ -34,6 +34,9 @@ cargo install --path .
 ## Quick Start
 
 ```bash
+# Read compact JSON
+jsonai cat users.json
+
 # Search all values
 jsonai search -q "john" --all users.json
 
@@ -46,6 +49,9 @@ jsonai search -q "timeout" --all ./configs/
 # Pipe from stdin
 curl https://api.example.com/data | jsonai search -q "error" --all -
 
+# Run jq filter (without jq binary)
+jsonai query -f '.[] | select(.active == true)' users.json
+
 # Modify JSON
 jsonai set -p /0/name '"New Name"' users.json
 ```
@@ -54,10 +60,15 @@ jsonai set -p /0/name '"New Name"' users.json
 
 | Flag | Description |
 |---|---|
-| `--pretty` | Pretty-print JSON output (stdout defaults to compact) |
-| `--compact` | Compact JSON output (file writes default to pretty) |
+| `--pretty` | Pretty-print JSON output |
+| `--compact` | Compact JSON output |
 
-Defaults are optimized for agents: stdout is compact to save tokens, file writes are pretty for human readability.
+Defaults are optimized for agents:
+
+- **stdout** (`cat`, `search`, `fields`, `query`): compact JSON by default
+- **file writes** (`set`, `add`, `delete`, `patch`): pretty JSON by default
+
+Use `--pretty` to force pretty output, or `--compact` to force compact output.
 
 ## Commands
 
@@ -149,15 +160,20 @@ Single results output as a value; multiple results output as an array. Supports 
 
 ### `fields`
 
-List all searchable field paths in a JSON file.
+List searchable field paths from a JSON document.
 
 ```bash
 jsonai fields data.json
+jsonai fields schema.json --schema
 ```
 
 ```json
 ["email","id","name","role","tags"]
 ```
+
+| Flag | Description |
+|---|---|
+| `--schema` | Mark input as schema JSON (still returns discovered field paths) |
 
 ### `set`
 
@@ -170,38 +186,75 @@ jsonai set -p /0/name '"Test"' users.json --dry-run    # preview without writing
 jsonai set -p /0/name '"Test"' users.json -o out.json  # write to different file
 ```
 
+`set` requires the target path to already exist. Use `add` to create object keys or append/insert array entries.
+
+| Flag | Short | Description |
+|---|---|---|
+| `--pointer` | `-p` | JSON Pointer path to update (required) |
+| `--output` | `-o` | Write to a different file |
+| `--dry-run` | | Print result without writing |
+
 ### `add`
 
-Add a value at a JSON Pointer path (append to arrays, insert at index, add to objects).
+Add a value at a JSON Pointer path (append to arrays, insert at index, add/replace object keys).
 
 ```bash
 jsonai add -p /users/- '{"id":6,"name":"New User"}' data.json  # append to array
-jsonai add -p /users/0 '{"id":0,"name":"First"}' data.json     # insert at index 0
-jsonai add -p /settings/theme '"dark"' config.json              # add to object
+jsonai add -p /users/0 '{"id":0,"name":"First"}' data.json      # insert at index 0
+jsonai add -p /settings/theme '"dark"' config.json                   # add object key
 ```
+
+| Flag | Short | Description |
+|---|---|---|
+| `--pointer` | `-p` | JSON Pointer path to add into (required) |
+| `--output` | `-o` | Write to a different file |
+| `--dry-run` | | Print result without writing |
 
 ### `delete`
 
 Delete a value at a JSON Pointer path.
 
 ```bash
-jsonai delete -p /0/email users.json       # delete a field
-jsonai delete -p /users/2 data.json        # delete array element
+jsonai delete -p /0/email users.json
+jsonai delete -p /users/2 data.json
 ```
+
+`delete` cannot remove the root document (`""`).
+
+| Flag | Short | Description |
+|---|---|---|
+| `--pointer` | `-p` | JSON Pointer path to delete (required) |
+| `--output` | `-o` | Write to a different file |
+| `--dry-run` | | Print result without writing |
 
 ### `patch`
 
-Apply a JSON Patch (RFC 6902) document. Supports operations: `test`, `add`, `remove`, `replace`, `move`, `copy`.
+Apply a JSON Patch (RFC 6902) document. Supports `test`, `add`, `remove`, `replace`, `move`, `copy`.
 
 ```bash
 # Patch from file
 jsonai patch -p patch.json target.json
 
-# Patch from stdin
+# Patch from stdin (explicit)
 echo '[{"op":"replace","path":"/0/name","value":"Updated"}]' | jsonai patch -p - target.json
+
+# Patch from stdin (implicit when -p is omitted)
+cat patch.json | jsonai patch target.json
 ```
 
-All manipulation commands support `--dry-run` (preview to stdout) and `-o <file>` (write to different file).
+| Flag | Short | Description |
+|---|---|---|
+| `--patch` | `-p` | Patch file path, or `-` for stdin (if omitted, reads stdin) |
+| `--output` | `-o` | Write to a different file |
+| `--dry-run` | | Print result without writing |
+
+All manipulation commands support `--dry-run` (preview to stdout) and `-o <file>` (write to a different file).
+
+### JSON Pointer Notes
+
+- `/users/0/name` accesses nested object/array paths.
+- For `add`/`patch add`, use `/-` to append to an array.
+- Escape `/` as `~1` and `~` as `~0` in pointer segments.
 
 ## Output Format
 

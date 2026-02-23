@@ -54,18 +54,16 @@ fn eval(filter_str: &str, input: Value) -> Result<Vec<Value>> {
         code: filter_str,
         path: (),
     };
-    let modules = loader
-        .load(&arena, program)
-        .map_err(|errs| {
-            let err_text = format!("{:?}", errs);
-            if err_text.contains("\\\\!") {
-                anyhow::anyhow!("Parse error: {:?}\nHint: {ESCAPED_BANG_HINT}", errs)
-            } else if trimmed.starts_with('!') || err_text.contains("Parse([(Term, \"!\")])") {
-                anyhow::anyhow!("Parse error: {:?}\nHint: {UNARY_BANG_HINT}", errs)
-            } else {
-                anyhow::anyhow!("Parse error: {:?}", errs)
-            }
-        })?;
+    let modules = loader.load(&arena, program).map_err(|errs| {
+        let err_text = format!("{:?}", errs);
+        if err_text.contains("\\\\!") {
+            anyhow::anyhow!("Parse error: {:?}\nHint: {ESCAPED_BANG_HINT}", errs)
+        } else if trimmed.starts_with('!') || err_text.contains("Parse([(Term, \"!\")])") {
+            anyhow::anyhow!("Parse error: {:?}\nHint: {UNARY_BANG_HINT}", errs)
+        } else {
+            anyhow::anyhow!("Parse error: {:?}", errs)
+        }
+    })?;
 
     let filter = Compiler::default()
         .with_funs(jaq_std::funs().chain(jaq_json::funs()))
