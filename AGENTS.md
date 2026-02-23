@@ -16,3 +16,8 @@
 
 - Run `cargo test` before merging to `main`.
 - All tests must pass. Do not skip or disable tests.
+
+## Local Install
+
+- For local installation, use `sh ./install.sh`.
+- Do NOT use `cargo install --path .` unless explicitly requested.
